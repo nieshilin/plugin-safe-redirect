@@ -107,6 +107,7 @@ public class SafeRedirectRouter {
                         if (advancedSetting.isTrackOutbound()) {
                             log.info("Outbound link accessed: {}", finalUrl);
                         }
+                        String customCss = advancedSetting.getCustomCss();
                         return settingFetcher.fetch("style", StyleSetting.class)
                             .defaultIfEmpty(new StyleSetting())
                             .flatMap(styleSetting -> {
@@ -217,7 +218,7 @@ public class SafeRedirectRouter {
             : "";
 
         // 获取主题样式
-        String themeStyles = buildThemeStyles(style.getTheme());
+        String themeStyles = buildThemeStyles(style.getTheme(), advanced.getCustomCss());
 
         // 构建图标
         String iconHtml;
@@ -313,9 +314,6 @@ public class SafeRedirectRouter {
     }
 
     /**
-     * 构建主题 CSS
-     */
-    /**
      * 构建倒计时 JS
      */
     private String buildCountdownJs(int seconds, String targetUrl) {
@@ -329,14 +327,14 @@ public class SafeRedirectRouter {
                   var ctx = canvas.getContext('2d');
                   var particles = [];
                   var mouse = { x: null, y: null };
-                  
+            
                   function resize() {
                     canvas.width = window.innerWidth;
                     canvas.height = window.innerHeight;
                   }
                   resize();
                   window.addEventListener('resize', resize);
-                  
+            
                   class Particle {
                     constructor() {
                       this.x = Math.random() * canvas.width;
@@ -361,7 +359,7 @@ public class SafeRedirectRouter {
                       ctx.fill();
                     }
                   }
-                  
+            
                   function initParticles() {
                     particles = [];
                     var count = Math.min(60, Math.floor((canvas.width * canvas.height) / 15000));
@@ -370,7 +368,7 @@ public class SafeRedirectRouter {
                     }
                   }
                   initParticles();
-                  
+            
                   function connectParticles() {
                     for (var i = 0; i < particles.length; i++) {
                       for (var j = i + 1; j < particles.length; j++) {
@@ -388,7 +386,7 @@ public class SafeRedirectRouter {
                       }
                     }
                   }
-                  
+            
                   function animate() {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     particles.forEach(function(p) { p.update(); p.draw(); });
@@ -397,7 +395,7 @@ public class SafeRedirectRouter {
                   }
                   animate();
                 }
-                
+            
                 // 倒计时逻辑
                 var remaining = %d;
                 var el = document.getElementById('countdown-num');
@@ -461,132 +459,120 @@ public class SafeRedirectRouter {
     /**
      * 构建主题样式
      */
-    private String buildThemeStyles(String theme) {
+    private String buildThemeStyles(String theme, String customCss) {
         if (theme == null) theme = "default";
-        
-        switch (theme) {
-            case "minimal":
-                return """
-                    /* 极简主题 */
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ffffff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-                    canvas { display: none; }
-                    .sr-card { background: #ffffff; border: 2px solid #e5e7eb; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 50%%; }
-                    .sr-icon-svg { width: 40px; height: 40px; color: #6b7280; }
-                    .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 50%%; }
-                    .sr-title { font-size: 22px; font-weight: 600; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
-                    .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
-                    .sr-tip strong { color: #1f2937; font-weight: 600; }
-                    .sr-url-container { background: #f9fafb; border-radius: 6px; padding: 16px; margin-bottom: 24px; border: 1px solid #e5e7eb; }
-                    .sr-url-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-                    .sr-url-text { font-size: 12px; color: #4b5563; font-family: 'Monaco', 'Courier New', monospace; word-break: break-all; display: block; }
-                    .sr-qrcode { text-align: center; margin-bottom: 24px; }
-                    .sr-qrcode-label { font-size: 12px; color: #9ca3af; margin-bottom: 8px; }
-                    .sr-qrcode-img { border: 1px solid #e5e7eb; border-radius: 6px; }
-                    .sr-countdown { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 16px; }
-                    .sr-countdown-text { font-size: 14px; color: #4b5563; }
-                    #countdown-num { font-weight: 600; color: #1f2937; }
-                    .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-btn { flex: 1; padding: 12px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-decoration: none; }
-                    .sr-btn-primary { background: #1f2937; color: white; }
-                    .sr-btn-primary:hover { background: #374151; }
-                    .sr-btn-secondary { background: #ffffff; color: #6b7280; border: 2px solid #e5e7eb; }
-                    .sr-btn-secondary:hover { border-color: #9ca3af; color: #374151; background: #f9fafb; }
-                    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @media (max-width: 480px) {
-                      .sr-card { padding: 24px; }
-                      .sr-title { font-size: 18px; }
-                      .sr-buttons { flex-direction: column; }
-                    }
-                    """;
-                
-            case "tech":
-                return """
-                    /* 科技主题 */
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: 'Courier New', monospace; background: linear-gradient(135deg, #0f0f23 0%%, #1a1a2e 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-                    canvas { position: fixed; top: 0; left: 0; width: 100%%; height: 100%%; z-index: -1; }
-                    .sr-card { background: rgba(26, 26, 46, 0.9); border: 1px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.2); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: rgba(0, 240, 255, 0.1); border: 2px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.3); }
-                    .sr-icon-svg { width: 40px; height: 40px; color: #00f0ff; }
-                    .sr-icon-img { width: 48px; height: 48px; object-fit: contain; }
-                    .sr-title { font-size: 20px; font-weight: 700; color: #00f0ff; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; text-transform: uppercase; letter-spacing: 2px; }
-                    .sr-tip { font-size: 13px; color: #a0aec0; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
-                    .sr-tip strong { color: #00f0ff; }
-                    .sr-url-container { background: rgba(0, 240, 255, 0.05); border: 1px solid #00f0ff; border-radius: 4px; padding: 16px; margin-bottom: 24px; }
-                    .sr-url-label { font-size: 10px; color: #00f0ff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
-                    .sr-url-text { font-size: 11px; color: #00f0ff; font-family: 'Courier New', monospace; word-break: break-all; display: block; }
-                    .sr-qrcode { text-align: center; margin-bottom: 24px; }
-                    .sr-qrcode-label { font-size: 11px; color: #00f0ff; margin-bottom: 8px; }
-                    .sr-qrcode-img { border: 1px solid #00f0ff; border-radius: 4px; }
-                    .sr-countdown { background: rgba(0, 240, 255, 0.1); border: 1px solid #00f0ff; border-radius: 4px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 16px; }
-                    .sr-countdown-text { font-size: 13px; color: #00f0ff; }
-                    #countdown-num { font-weight: 700; color: #00f0ff; }
-                    .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-btn { flex: 1; padding: 14px 24px; border: 2px solid #00f0ff; border-radius: 4px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.3s ease; text-decoration: none; text-transform: uppercase; letter-spacing: 1px; }
-                    .sr-btn-primary { background: #00f0ff; color: #0f0f23; }
-                    .sr-btn-primary:hover { background: #00c8d4; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); }
-                    .sr-btn-secondary { background: transparent; color: #00f0ff; }
-                    .sr-btn-secondary:hover { background: rgba(0, 240, 255, 0.1); }
-                    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
-                    @media (max-width: 480px) {
-                      .sr-card { padding: 24px; }
-                      .sr-title { font-size: 16px; }
-                      .sr-buttons { flex-direction: column; }
-                    }
-                    """;
-                
-            case "warm":
-                return """
-                    /* 温暖主题 */
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ffecd2 0%%, #fcb69f 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-                    canvas { display: none; }
-                    .sr-card { background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 10px 40px rgba(251, 146, 60, 0.3); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); border-radius: 20px; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.4); }
-                    .sr-icon-svg { width: 40px; height: 40px; color: white; }
-                    .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 12px; }
-                    .sr-title { font-size: 24px; font-weight: 700; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
-                    .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
-                    .sr-tip strong { color: #f97316; }
-                    .sr-url-container { background: #fff7ed; border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid #fed7aa; }
-                    .sr-url-label { font-size: 11px; color: #fb923c; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
-                    .sr-url-text { font-size: 12px; color: #4b5563; font-family: 'Monaco', 'Courier New', monospace; word-break: break-all; display: block; }
-                    .sr-qrcode { text-align: center; margin-bottom: 24px; }
-                    .sr-qrcode-label { font-size: 12px; color: #fb923c; margin-bottom: 8px; }
-                    .sr-qrcode-img { border: 2px solid #fed7aa; border-radius: 12px; }
-                    .sr-countdown { background: #fff7ed; border: 1px solid #f97316; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 18px; }
-                    .sr-countdown-text { font-size: 14px; color: #9a3412; }
-                    #countdown-num { font-weight: 700; color: #f97316; }
-                    .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; }
-                    .sr-btn-primary { background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); color: white; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
-                    .sr-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4); }
-                    .sr-btn-secondary { background: #ffffff; color: #6b7280; border: 2px solid #fed7aa; }
-                    .sr-btn-secondary:hover { border-color: #f97316; color: #f97316; background: #fff7ed; }
-                    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
-                    @media (max-width: 480px) {
-                      .sr-card { padding: 24px; }
-                      .sr-title { font-size: 20px; }
-                      .sr-buttons { flex-direction: column; }
-                    }
-                    """;
-                
-            case "custom":
-                return """
-                    /* 自定义主题 - 使用自定义 CSS */
-                    * { box-sizing: border-box; margin: 0; padding: 0; }
-                    /* 管理员可以在高级设置中添加自定义 CSS */
-                    """;
-                
-            default: // default theme
-                return """
+
+        return switch (theme) {
+            case "minimal" -> """
+                /* 极简主题 */
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ffffff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                canvas { display: none; }
+                .sr-card { background: #ffffff; border: 2px solid #e5e7eb; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; }
+                .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 50%%; }
+                .sr-icon-svg { width: 40px; height: 40px; color: #6b7280; }
+                .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 50%%; }
+                .sr-title { font-size: 22px; font-weight: 600; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
+                .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
+                .sr-tip strong { color: #1f2937; font-weight: 600; }
+                .sr-url-container { background: #f9fafb; border-radius: 6px; padding: 16px; margin-bottom: 24px; border: 1px solid #e5e7eb; }
+                .sr-url-label { font-size: 11px; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+                .sr-url-text { font-size: 12px; color: #4b5563; font-family: 'Monaco', 'Courier New', monospace; word-break: break-all; display: block; }
+                .sr-qrcode { text-align: center; margin-bottom: 24px; }
+                .sr-qrcode-label { font-size: 12px; color: #9ca3af; margin-bottom: 8px; }
+                .sr-qrcode-img { border: 1px solid #e5e7eb; border-radius: 6px; }
+                .sr-countdown { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-countdown-icon { font-size: 16px; }
+                .sr-countdown-text { font-size: 14px; color: #4b5563; }
+                #countdown-num { font-weight: 600; color: #1f2937; }
+                .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-btn { flex: 1; padding: 12px 20px; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-decoration: none; }
+                .sr-btn-primary { background: #1f2937; color: white; }
+                .sr-btn-primary:hover { background: #374151; }
+                .sr-btn-secondary { background: #ffffff; color: #6b7280; border: 2px solid #e5e7eb; }
+                .sr-btn-secondary:hover { border-color: #9ca3af; color: #374151; background: #f9fafb; }
+                @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+                @media (max-width: 480px) {
+                  .sr-card { padding: 24px; }
+                  .sr-title { font-size: 18px; }
+                  .sr-buttons { flex-direction: column; }
+                }
+                """;
+            case "tech" -> """
+                /* 科技主题 */
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: 'Courier New', monospace; background: linear-gradient(135deg, #0f0f23 0%%, #1a1a2e 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                canvas { position: fixed; top: 0; left: 0; width: 100%%; height: 100%%; z-index: -1; }
+                .sr-card { background: rgba(26, 26, 46, 0.9); border: 1px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.2); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
+                .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: rgba(0, 240, 255, 0.1); border: 2px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.3); }
+                .sr-icon-svg { width: 40px; height: 40px; color: #00f0ff; }
+                .sr-icon-img { width: 48px; height: 48px; object-fit: contain; }
+                .sr-title { font-size: 20px; font-weight: 700; color: #00f0ff; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; text-transform: uppercase; letter-spacing: 2px; }
+                .sr-tip { font-size: 13px; color: #a0aec0; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
+                .sr-tip strong { color: #00f0ff; }
+                .sr-url-container { background: rgba(0, 240, 255, 0.05); border: 1px solid #00f0ff; border-radius: 4px; padding: 16px; margin-bottom: 24px; }
+                .sr-url-label { font-size: 10px; color: #00f0ff; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+                .sr-url-text { font-size: 11px; color: #00f0ff; font-family: 'Courier New', monospace; word-break: break-all; display: block; }
+                .sr-qrcode { text-align: center; margin-bottom: 24px; }
+                .sr-qrcode-label { font-size: 11px; color: #00f0ff; margin-bottom: 8px; }
+                .sr-qrcode-img { border: 1px solid #00f0ff; border-radius: 4px; }
+                .sr-countdown { background: rgba(0, 240, 255, 0.1); border: 1px solid #00f0ff; border-radius: 4px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-countdown-icon { font-size: 16px; }
+                .sr-countdown-text { font-size: 13px; color: #00f0ff; }
+                #countdown-num { font-weight: 700; color: #00f0ff; }
+                .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-btn { flex: 1; padding: 14px 24px; border: 2px solid #00f0ff; border-radius: 4px; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.3s ease; text-decoration: none; text-transform: uppercase; letter-spacing: 1px; }
+                .sr-btn-primary { background: #00f0ff; color: #0f0f23; }
+                .sr-btn-primary:hover { background: #00c8d4; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); }
+                .sr-btn-secondary { background: transparent; color: #00f0ff; }
+                .sr-btn-secondary:hover { background: rgba(0, 240, 255, 0.1); }
+                @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
+                @media (max-width: 480px) {
+                  .sr-card { padding: 24px; }
+                  .sr-title { font-size: 16px; }
+                  .sr-buttons { flex-direction: column; }
+                }
+                """;
+            case "warm" -> """
+                /* 温暖主题 */
+                * { box-sizing: border-box; margin: 0; padding: 0; }
+                body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ffecd2 0%%, #fcb69f 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                canvas { display: none; }
+                .sr-card { background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 10px 40px rgba(251, 146, 60, 0.3); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
+                .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); border-radius: 20px; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.4); }
+                .sr-icon-svg { width: 40px; height: 40px; color: white; }
+                .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 12px; }
+                .sr-title { font-size: 24px; font-weight: 700; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
+                .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
+                .sr-tip strong { color: #f97316; }
+                .sr-url-container { background: #fff7ed; border-radius: 12px; padding: 16px; margin-bottom: 24px; border: 1px solid #fed7aa; }
+                .sr-url-label { font-size: 11px; color: #fb923c; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+                .sr-url-text { font-size: 12px; color: #4b5563; font-family: 'Monaco', 'Courier New', monospace; word-break: break-all; display: block; }
+                .sr-qrcode { text-align: center; margin-bottom: 24px; }
+                .sr-qrcode-label { font-size: 12px; color: #fb923c; margin-bottom: 8px; }
+                .sr-qrcode-img { border: 2px solid #fed7aa; border-radius: 12px; }
+                .sr-countdown { background: #fff7ed; border: 1px solid #f97316; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-countdown-icon { font-size: 18px; }
+                .sr-countdown-text { font-size: 14px; color: #9a3412; }
+                #countdown-num { font-weight: 700; color: #f97316; }
+                .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
+                .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; }
+                .sr-btn-primary { background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); color: white; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
+                .sr-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4); }
+                .sr-btn-secondary { background: #ffffff; color: #6b7280; border: 2px solid #fed7aa; }
+                .sr-btn-secondary:hover { border-color: #f97316; color: #f97316; background: #fff7ed; }
+                @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+                @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
+                @media (max-width: 480px) {
+                  .sr-card { padding: 24px; }
+                  .sr-title { font-size: 20px; }
+                  .sr-buttons { flex-direction: column; }
+                }
+                """;
+            case "custom" -> customCss;
+            default -> // default theme
+                """
                     /* 默认主题 */
                     * { box-sizing: border-box; margin: 0; padding: 0; }
                     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
@@ -625,6 +611,6 @@ public class SafeRedirectRouter {
                       .sr-buttons { flex-direction: column; }
                     }
                     """;
-        }
+        };
     }
 }

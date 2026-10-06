@@ -21,6 +21,9 @@ dependencies {
 
     testImplementation 'run.halo.app:api'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // Gradle 8.9 的 JUnit Platform launcher 需要显式声明并与 engine 版本对齐，
+    // 否则会出现 TestEngine with ID 'junit-jupiter' failed to discover tests
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 test {

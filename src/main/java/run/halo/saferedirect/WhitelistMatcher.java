@@ -80,15 +80,19 @@ public final class WhitelistMatcher {
         for (String domain : domains) {
             String trimmed = domain.trim().toLowerCase();
             if (!trimmed.isBlank()) {
-                if (!first) {
-                    sb.append(",");
-                }
                 // 泛域名保留 "*." 前缀
                 String safe;
                 if (trimmed.startsWith("*.")) {
                     safe = "*." + trimmed.substring(2).replaceAll("[^a-zA-Z0-9.\\-]", "");
                 } else {
                     safe = trimmed.replaceAll("[^a-zA-Z0-9.\\-]", "");
+                }
+                // 净化后为空（只含非法字符）则跳过，避免产生空条目
+                if (safe.isEmpty()) {
+                    continue;
+                }
+                if (!first) {
+                    sb.append(",");
                 }
                 sb.append("\"").append(safe).append("\"");
                 first = false;

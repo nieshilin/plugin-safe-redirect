@@ -66,29 +66,7 @@ public class SafeRedirectHeadProcessor implements TemplateHeadProcessor {
      * <p>支持 *.example.com 泛域名写法，匹配 example.com 及其所有子域名
      */
     private String buildWhitelistJs(String whitelistDomains) {
-        if (whitelistDomains == null || whitelistDomains.isBlank()) {
-            return "[]";
-        }
-        StringBuilder sb = new StringBuilder("[");
-        String[] domains = whitelistDomains.split("[\n,]");
-        boolean first = true;
-        for (String domain : domains) {
-            String trimmed = domain.trim().toLowerCase();
-            if (!trimmed.isBlank()) {
-                if (!first) sb.append(",");
-                // 对域名做基础净化，只保留合法字符，防止注入；泛域名保留 "*." 前缀
-                String safe;
-                if (trimmed.startsWith("*.")) {
-                    safe = "*." + trimmed.substring(2).replaceAll("[^a-zA-Z0-9.\\-]", "");
-                } else {
-                    safe = trimmed.replaceAll("[^a-zA-Z0-9.\\-]", "");
-                }
-                sb.append("\"").append(safe).append("\"");
-                first = false;
-            }
-        }
-        sb.append("]");
-        return sb.toString();
+        return WhitelistMatcher.buildWhitelistJs(whitelistDomains);
     }
 
     /**

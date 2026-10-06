@@ -12,5 +12,6 @@ public class StyleSetting {
     private boolean showTargetUrl = true;
     private boolean showQrCode = false;
     private String iconUrl = "";
+    private String backgroundImageUrl = "";
     private String customHtml = "";
 }

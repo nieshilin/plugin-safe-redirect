@@ -2,6 +2,7 @@ package run.halo.saferedirect;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.server.RouterFunction;
@@ -114,13 +115,17 @@ public class SafeRedirectRouter {
                                 String customHtml = styleSetting.getCustomHtml();
                                 if (customHtml != null && !customHtml.trim().isEmpty()) {
                                     // 使用自定义 HTML（完全替换整个页面）
+                                    // 禁止缓存中间页，防止浏览器通过缓存/bfcache 回退显示过期页面
                                     return ServerResponse.ok()
                                         .contentType(MediaType.TEXT_HTML)
+                                        .header(HttpHeaders.CACHE_CONTROL, "no-store")
                                         .bodyValue(buildCustomPage(finalUrl, basicSetting, customHtml.trim()));
                                 }
                                 // 使用默认模板
+                                // 禁止缓存中间页，防止浏览器通过缓存/bfcache 回退显示过期页面
                                 return ServerResponse.ok()
                                     .contentType(MediaType.TEXT_HTML)
+                                    .header(HttpHeaders.CACHE_CONTROL, "no-store")
                                     .bodyValue(buildRedirectPage(
                                         finalUrl, basicSetting, styleSetting, advancedSetting));
                             });
@@ -157,7 +162,12 @@ public class SafeRedirectRouter {
             String lowerHost = host.toLowerCase();
             boolean matched = domains.stream().anyMatch(domain -> {
                 String lowerDomain = domain.toLowerCase();
-                boolean result = lowerHost.equals(lowerDomain) || lowerHost.endsWith("." + lowerDomain);
+                // 支持泛域名写法 *.example.com：剥去 "*." 前缀后，匹配主域及其所有子域名
+                String baseDomain = lowerDomain.startsWith("*.")
+                    ? lowerDomain.substring(2)
+                    : lowerDomain;
+                boolean result = lowerHost.equals(baseDomain)
+                    || lowerHost.endsWith("." + baseDomain);
                 log.debug("Whitelist check: host={}, domain={}, matched={}", lowerHost, lowerDomain, result);
                 return result;
             });
@@ -186,7 +196,8 @@ public class SafeRedirectRouter {
                 + "</strong>，前往以下外部网站。外部链接的内容不受本站控制，请谨慎访问。";
 
         int countdown = style.getCountdown();
-        String countdownJs = countdown > 0 ? buildCountdownJs(countdown, targetUrl) : "";
+        // 脚本始终注入（即使倒计时为 0），用于拦截"确认跳转"并覆盖历史记录，防止回退到本页
+        String pageScripts = buildPageScripts(countdown, targetUrl);
 
         String countdownHtmlUI = countdown > 0
             ? "<div class=\"sr-countdown mt-4\">"
@@ -216,8 +227,17 @@ public class SafeRedirectRouter {
             ? style.getCustomHtml().trim()
             : "";
 
-        // 获取主题样式
-        String themeStyles = buildThemeStyles(style.getTheme());
+        // 获取主题样式（custom 主题使用高级设置中的自定义 CSS）
+        String themeStyles = buildThemeStyles(style.getTheme(), advanced.getCustomCss());
+
+        // 自定义背景图片（可选）：覆盖主题默认渐变背景，留空则无输出
+        String bgImageCss = "";
+        String backgroundImageUrl = style.getBackgroundImageUrl();
+        if (backgroundImageUrl != null && !backgroundImageUrl.trim().isEmpty()) {
+            bgImageCss = "    /* 自定义背景图片 */\n"
+                + "    body { background-image: url('" + escapeCssUrl(backgroundImageUrl.trim()) + "'); "
+                + "background-size: cover; background-position: center; background-attachment: fixed; }\n";
+        }
 
         // 构建图标
         String iconHtml;
@@ -240,10 +260,9 @@ public class SafeRedirectRouter {
             + "  <meta charset=\"UTF-8\">\n"
             + "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
             + "  <meta name=\"robots\" content=\"noindex,nofollow\">\n"
+            + "  <meta http-equiv=\"Cache-Control\" content=\"no-store\">\n"
             + "  <title>" + escapeHtml(basic.getPageTitle()) + "</title>\n"
             + "  <style>\n"
-            + themeStyles
-            + "\n"
             + "    /* 二维码 */\n"
             + "    .sr-qrcode { text-align: center; margin-bottom: 24px; }\n"
             + "    .sr-qrcode-label { font-size: 12px; color: #9ca3af; margin-bottom: 8px; }\n"
@@ -251,22 +270,22 @@ public class SafeRedirectRouter {
             + "\n"
             + "    /* 倒计时 */\n"
             + "    .sr-countdown { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }\n"
-            + "    .sr-countdown-icon { font-size: 18px; }\n"
+            + "    .sr-countdown-icon { font-size: 18px; color: #f59e0b; }\n"
             + "    .sr-countdown-text { font-size: 14px; color: #92400e; }\n"
             + "    #countdown-num { font-weight: 700; color: #f59e0b; }\n"
             + "\n"
             + "    /* 按钮 */\n"
             + "    .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }\n"
             + "    .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; }\n"
-            + "    .sr-btn-primary { background: linear-gradient(135deg, #3B82F6 0%%, #2563eb 100%%); color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }\n"
+            + "    .sr-btn-primary { background: linear-gradient(135deg, #3B82F6 0%, #2563eb 100%); color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }\n"
             + "    .sr-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }\n"
             + "    .sr-btn-secondary { background: transparent; color: #6b7280; border: 2px solid #e5e7eb; }\n"
             + "    .sr-btn-secondary:hover { border-color: #9ca3af; color: #374151; background: #f9fafb; }\n"
             + "\n"
             + "    /* 动画 */\n"
             + "    @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }\n"
-            + "    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }\n"
-            + "    @keyframes pulse { 0%%, 100%% { box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); } 50%% { box-shadow: 0 10px 40px rgba(59, 130, 246, 0.6); } }\n"
+            + "    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }\n"
+            + "    @keyframes pulse { 0%, 100% { box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); } 50% { box-shadow: 0 10px 40px rgba(59, 130, 246, 0.6); } }\n"
             + "\n"
             + "    /* 响应式 */\n"
             + "    @media (max-width: 480px) {\n"
@@ -274,6 +293,10 @@ public class SafeRedirectRouter {
             + "      .sr-title { font-size: 20px; }\n"
             + "      .sr-buttons { flex-direction: column; }\n"
             + "    }\n"
+            + "\n"
+            + "    /* 主题样式最后输出：覆盖上方公共默认样式，保持所选主题的按钮等视觉风格 */\n"
+            + themeStyles
+            + bgImageCss
             + "  </style>\n"
             + "</head>\n"
             + "<body>\n"
@@ -289,13 +312,13 @@ public class SafeRedirectRouter {
             + "      <a href=\"" + escapeHtml(targetUrl) + "\" rel=\"noopener noreferrer nofollow\" id=\"confirm-btn\" class=\"sr-btn sr-btn-primary\">"
             + "        确认跳转"
             + "      </a>"
-            + "      <a href=\"javascript:history.back()\" class=\"sr-btn sr-btn-secondary\">"
+            + "      <a href=\"javascript:history.back()\" id=\"back-btn\" class=\"sr-btn sr-btn-secondary\">"
             + "        返回上页"
             + "      </a>"
             + "    </div>"
             + customHtmlUI + "\n"
             + "  </div>"
-            + countdownJs
+            + pageScripts
             + "</body>"
             + "</html>";
     }
@@ -308,18 +331,34 @@ public class SafeRedirectRouter {
             + "<title>错误 - " + escapeHtml(title) + "</title></head><body>"
             + "<h2>⚠️ " + escapeHtml(title) + "</h2>"
             + "<p>" + escapeHtml(message) + "</p>"
-            + "<a href=\"javascript:history.back()\">返回上页</a>"
+            + "<a href=\"javascript:history.back()\" id=\"back-btn\">返回上页</a>"
+            + "<script>"
+            + "var b=document.getElementById('back-btn');"
+            + "if(b){b.addEventListener('click',function(e){e.preventDefault();"
+            + "var f=(document.referrer&&document.referrer!==window.location.href)"
+            + "?document.referrer:'/';"
+            + "if(window.history.length>1){window.history.back();}else{"
+            + "window.close();"
+            + "setTimeout(function(){window.location.replace(f);},300);}});}"
+            + "</script>"
             + "</body></html>";
     }
 
     /**
-     * 构建主题 CSS
+     * 构建页面脚本：粒子动画 + 倒计时 + 防回退跳转
+     *
+     * <p>所有离开本页的跳转均使用 window.location.replace()，
+     * 用目标地址覆盖中间页的历史记录条目，
+     * 使浏览器"后退"无法再回到本中间页，只能回到来源页面。
      */
-    /**
-     * 构建倒计时 JS
-     */
-    private String buildCountdownJs(int seconds, String targetUrl) {
-        String escaped = targetUrl.replace("'", "\\'").replace("\"", "&quot;");
+    private String buildPageScripts(int seconds, String targetUrl) {
+        // JS 字符串转义：处理反斜杠、换行、单引号及 </script> 序列，防止脚本注入
+        String escaped = targetUrl
+            .replace("\\", "\\\\")
+            .replace("\r", "")
+            .replace("\n", "")
+            .replace("'", "\\'")
+            .replace("</", "<\\/");
         return """
             <script>
               (function() {
@@ -398,25 +437,81 @@ public class SafeRedirectRouter {
                   animate();
                 }
                 
-                // 倒计时逻辑
-                var remaining = %d;
+                // 执行跳转：replace 覆盖当前历史条目，后退无法回到本页
+                var timer = null;
+                function jump() {
+                  if (timer) {
+                    clearInterval(timer);
+                    timer = null;
+                  }
+                  window.location.replace('%s');
+                }
+
                 var el = document.getElementById('countdown-num');
                 var btn = document.getElementById('confirm-btn');
-                var timer = setInterval(function() {
-                  remaining--;
-                  if (el) el.textContent = remaining;
-                  if (remaining <= 0) {
-                    clearInterval(timer);
-                    window.location.href = '%s';
-                  }
-                }, 1000);
-                // 用户主动点击时清除倒计时
-                if (btn) {
-                  btn.addEventListener('click', function() { clearInterval(timer); });
+                var remaining = %d;
+
+                // 倒计时逻辑
+                if (remaining > 0 && el) {
+                  timer = setInterval(function() {
+                    remaining--;
+                    el.textContent = remaining;
+                    if (remaining <= 0) {
+                      clearInterval(timer);
+                      jump();
+                    }
+                  }, 1000);
                 }
+
+                // 点击"确认跳转"：阻止默认整页导航，改用 replace 跳转
+                if (btn) {
+                  btn.addEventListener('click', function(e) {
+                    // 保留 Ctrl/Cmd/Shift 点击在新标签页打开的能力
+                    if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    jump();
+                  });
+                }
+
+                // 点击"返回上页"：优先回退浏览器历史；
+                // 若中间页在新标签页打开（历史栈只有本页，history.back() 无效），
+                // 则直接关闭当前标签页，浏览器会自动回到来源标签页；
+                // 关闭被浏览器安全策略拒绝时，降级跳转到来源页（无来源则回首页）
+                function goBack() {
+                  var fallback = (document.referrer && document.referrer !== window.location.href)
+                    ? document.referrer : '/';
+                  if (window.history.length > 1) {
+                    var left = false;
+                    // pagehide 触发说明后退导航已生效；否则 500ms 后走兜底返回
+                    window.addEventListener('pagehide', function() { left = true; }, { once: true });
+                    window.history.back();
+                    setTimeout(function() {
+                      if (!left) window.location.replace(fallback);
+                    }, 500);
+                  } else {
+                    // 作为新标签页首个页面被打开时，window.close() 可被浏览器允许执行
+                    window.close();
+                    // 若关闭请求被拒绝，本页面仍存活，定时器会执行并降级跳回来源页
+                    setTimeout(function() {
+                      window.location.replace(fallback);
+                    }, 300);
+                  }
+                }
+                var backBtn = document.getElementById('back-btn');
+                if (backBtn) {
+                  backBtn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    goBack();
+                  });
+                }
+
+                // 从 bfcache/前进恢复页面时直接跳转，避免滞留在已跳转过的中间页
+                window.addEventListener('pageshow', function(e) {
+                  if (e.persisted) jump();
+                });
               })();
             </script>
-            """.formatted(seconds, escaped);
+            """.formatted(escaped, seconds);
     }
 
     /**
@@ -429,6 +524,16 @@ public class SafeRedirectRouter {
             .replace(">", "&gt;")
             .replace("\"", "&quot;")
             .replace("'", "&#x27;");
+    }
+
+    /**
+     * CSS url() 字符串转义：防止引号与 &lt;/style&gt; 序列提前闭合
+     * <p>CSS 中反斜杠可转义任意字符，\/ 会还原为 /，但不会提前闭合 HTML 的 style 标签
+     */
+    private String escapeCssUrl(String input) {
+        return input.replace("\\", "\\\\")
+            .replace("'", "\\'")
+            .replace("</", "<\\/");
     }
 
     /**
@@ -447,6 +552,7 @@ public class SafeRedirectRouter {
             + "<head>\n"
             + "  <meta charset=\"UTF-8\">\n"
             + "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n"
+            + "  <meta http-equiv=\"Cache-Control\" content=\"no-store\">\n"
             + "  <title>" + escapeHtml(basic.getPageTitle()) + "</title>\n"
             + "  <style>\n"
             + "    body { margin: 0; padding: 0; }\n"
@@ -460,8 +566,11 @@ public class SafeRedirectRouter {
 
     /**
      * 构建主题样式
+     *
+     * @param theme 主题标识
+     * @param customCss 管理员在高级设置中填写的自定义 CSS（仅 theme=custom 时使用）
      */
-    private String buildThemeStyles(String theme) {
+    private String buildThemeStyles(String theme, String customCss) {
         if (theme == null) theme = "default";
         
         switch (theme) {
@@ -471,10 +580,10 @@ public class SafeRedirectRouter {
                     * { box-sizing: border-box; margin: 0; padding: 0; }
                     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #ffffff; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
                     canvas { display: none; }
-                    .sr-card { background: #ffffff; border: 2px solid #e5e7eb; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 50%%; }
+                    .sr-card { background: #ffffff; border: 2px solid #e5e7eb; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05); max-width: 480px; width: 100%; padding: 40px; animation: fadeInUp 0.6s ease-out; }
+                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; display: flex; align-items: center; justify-content: center; background: #f3f4f6; border-radius: 50%; }
                     .sr-icon-svg { width: 40px; height: 40px; color: #6b7280; }
-                    .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 50%%; }
+                    .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 50%; }
                     .sr-title { font-size: 22px; font-weight: 600; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
                     .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.1s both; }
                     .sr-tip strong { color: #1f2937; font-weight: 600; }
@@ -485,7 +594,7 @@ public class SafeRedirectRouter {
                     .sr-qrcode-label { font-size: 12px; color: #9ca3af; margin-bottom: 8px; }
                     .sr-qrcode-img { border: 1px solid #e5e7eb; border-radius: 6px; }
                     .sr-countdown { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 16px; }
+                    .sr-countdown-icon { font-size: 16px; color: #1f2937; }
                     .sr-countdown-text { font-size: 14px; color: #4b5563; }
                     #countdown-num { font-weight: 600; color: #1f2937; }
                     .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
@@ -506,9 +615,9 @@ public class SafeRedirectRouter {
                 return """
                     /* 科技主题 */
                     * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: 'Courier New', monospace; background: linear-gradient(135deg, #0f0f23 0%%, #1a1a2e 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-                    canvas { position: fixed; top: 0; left: 0; width: 100%%; height: 100%%; z-index: -1; }
-                    .sr-card { background: rgba(26, 26, 46, 0.9); border: 1px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.2); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
+                    body { font-family: 'Courier New', monospace; background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                    canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+                    .sr-card { background: rgba(26, 26, 46, 0.9); border: 1px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.2); max-width: 480px; width: 100%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
                     .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: rgba(0, 240, 255, 0.1); border: 2px solid #00f0ff; border-radius: 4px; box-shadow: 0 0 20px rgba(0, 240, 255, 0.3); }
                     .sr-icon-svg { width: 40px; height: 40px; color: #00f0ff; }
                     .sr-icon-img { width: 48px; height: 48px; object-fit: contain; }
@@ -522,7 +631,7 @@ public class SafeRedirectRouter {
                     .sr-qrcode-label { font-size: 11px; color: #00f0ff; margin-bottom: 8px; }
                     .sr-qrcode-img { border: 1px solid #00f0ff; border-radius: 4px; }
                     .sr-countdown { background: rgba(0, 240, 255, 0.1); border: 1px solid #00f0ff; border-radius: 4px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 16px; }
+                    .sr-countdown-icon { font-size: 16px; color: #00f0ff; }
                     .sr-countdown-text { font-size: 13px; color: #00f0ff; }
                     #countdown-num { font-weight: 700; color: #00f0ff; }
                     .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
@@ -530,9 +639,9 @@ public class SafeRedirectRouter {
                     .sr-btn-primary { background: #00f0ff; color: #0f0f23; }
                     .sr-btn-primary:hover { background: #00c8d4; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); }
                     .sr-btn-secondary { background: transparent; color: #00f0ff; }
-                    .sr-btn-secondary:hover { background: rgba(0, 240, 255, 0.1); }
+                    .sr-btn-secondary:hover { background: rgba(0, 240, 255, 0.1); color: #00f0ff; }
                     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
+                    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
                     @media (max-width: 480px) {
                       .sr-card { padding: 24px; }
                       .sr-title { font-size: 16px; }
@@ -544,10 +653,10 @@ public class SafeRedirectRouter {
                 return """
                     /* 温暖主题 */
                     * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ffecd2 0%%, #fcb69f 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
                     canvas { display: none; }
-                    .sr-card { background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 10px 40px rgba(251, 146, 60, 0.3); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); border-radius: 20px; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.4); }
+                    .sr-card { background: rgba(255, 255, 255, 0.9); border-radius: 20px; box-shadow: 0 10px 40px rgba(251, 146, 60, 0.3); max-width: 480px; width: 100%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(10px); }
+                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #f97316 0%, #fbbf24 100%); border-radius: 20px; box-shadow: 0 8px 20px rgba(249, 115, 22, 0.4); }
                     .sr-icon-svg { width: 40px; height: 40px; color: white; }
                     .sr-icon-img { width: 48px; height: 48px; object-fit: contain; border-radius: 12px; }
                     .sr-title { font-size: 24px; font-weight: 700; color: #1f2937; text-align: center; margin-bottom: 12px; animation: fadeInUp 0.6s ease-out 0.1s both; }
@@ -560,17 +669,17 @@ public class SafeRedirectRouter {
                     .sr-qrcode-label { font-size: 12px; color: #fb923c; margin-bottom: 8px; }
                     .sr-qrcode-img { border: 2px solid #fed7aa; border-radius: 12px; }
                     .sr-countdown { background: #fff7ed; border: 1px solid #f97316; border-radius: 12px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 18px; }
+                    .sr-countdown-icon { font-size: 18px; color: #f97316; }
                     .sr-countdown-text { font-size: 14px; color: #9a3412; }
                     #countdown-num { font-weight: 700; color: #f97316; }
                     .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
                     .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; }
-                    .sr-btn-primary { background: linear-gradient(135deg, #f97316 0%%, #fbbf24 100%%); color: white; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
+                    .sr-btn-primary { background: linear-gradient(135deg, #f97316 0%, #fbbf24 100%); color: white; box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3); }
                     .sr-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(249, 115, 22, 0.4); }
                     .sr-btn-secondary { background: #ffffff; color: #6b7280; border: 2px solid #fed7aa; }
                     .sr-btn-secondary:hover { border-color: #f97316; color: #f97316; background: #fff7ed; }
                     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
+                    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
                     @media (max-width: 480px) {
                       .sr-card { padding: 24px; }
                       .sr-title { font-size: 20px; }
@@ -579,20 +688,33 @@ public class SafeRedirectRouter {
                     """;
                 
             case "custom":
+                // 使用管理员自定义 CSS；为空则回退到默认主题
+                if (customCss != null && !customCss.trim().isEmpty()) {
+                    return customCss.replace("</style", "<\\/style")
+                        .replace("</", "<\\/");
+                }
                 return """
-                    /* 自定义主题 - 使用自定义 CSS */
+                    /* 默认主题（未提供自定义 CSS） */
                     * { box-sizing: border-box; margin: 0; padding: 0; }
-                    /* 管理员可以在高级设置中添加自定义 CSS */
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f3f4f6; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                    canvas { display: none; }
+                    .sr-card { background: #ffffff; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); max-width: 480px; width: 100%; padding: 40px; }
+                    .sr-title { font-size: 22px; font-weight: 600; color: #1f2937; text-align: center; margin-bottom: 12px; }
+                    .sr-tip { font-size: 14px; color: #6b7280; text-align: center; line-height: 1.6; margin-bottom: 24px; }
+                    .sr-buttons { display: flex; gap: 12px; margin-top: 24px; }
+                    .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; text-decoration: none; }
+                    .sr-btn-primary { background: #3B82F6; color: white; }
+                    .sr-btn-secondary { background: transparent; color: #6b7280; border: 2px solid #e5e7eb; }
                     """;
                 
             default: // default theme
                 return """
                     /* 默认主题 */
                     * { box-sizing: border-box; margin: 0; padding: 0; }
-                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
-                    canvas { position: fixed; top: 0; left: 0; width: 100%%; height: 100%%; z-index: -1; }
-                    .sr-card { background: rgba(255, 255, 255, 0.95); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); max-width: 480px; width: 100%%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(20px); }
-                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #3B82F6 0%%, #8B5CF6 100%%); border-radius: 16px; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); }
+                    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+                    canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+                    .sr-card { background: rgba(255, 255, 255, 0.95); border-radius: 16px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3); max-width: 480px; width: 100%; padding: 40px; animation: fadeInUp 0.6s ease-out; backdrop-filter: blur(20px); }
+                    .sr-icon-container { width: 80px; height: 80px; margin: 0 auto 24px; animation: float 3s ease-in-out infinite; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%); border-radius: 16px; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); }
                     .sr-icon-svg { width: 40px; height: 40px; color: white; }
                     .sr-icon-ring { opacity: 0.3; }
                     .sr-icon-path { opacity: 0.9; }
@@ -607,18 +729,18 @@ public class SafeRedirectRouter {
                     .sr-qrcode-label { font-size: 12px; color: #9ca3af; margin-bottom: 8px; }
                     .sr-qrcode-img { border: 2px solid #e5e7eb; border-radius: 8px; }
                     .sr-countdown { background: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 12px 16px; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
-                    .sr-countdown-icon { font-size: 18px; }
+                    .sr-countdown-icon { font-size: 18px; color: #f59e0b; }
                     .sr-countdown-text { font-size: 14px; color: #92400e; }
                     #countdown-num { font-weight: 700; color: #f59e0b; }
                     .sr-buttons { display: flex; gap: 12px; margin-top: 24px; animation: fadeInUp 0.6s ease-out 0.3s both; }
                     .sr-btn { flex: 1; padding: 14px 24px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; text-decoration: none; }
-                    .sr-btn-primary { background: linear-gradient(135deg, #3B82F6 0%%, #2563eb 100%%); color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
+                    .sr-btn-primary { background: linear-gradient(135deg, #3B82F6 0%, #2563eb 100%); color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3); }
                     .sr-btn-primary:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4); }
                     .sr-btn-secondary { background: transparent; color: #6b7280; border: 2px solid #e5e7eb; }
                     .sr-btn-secondary:hover { border-color: #9ca3af; color: #374151; background: #f9fafb; }
                     @keyframes fadeInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
-                    @keyframes float { 0%%, 100%% { transform: translateY(0px); } 50%% { transform: translateY(-8px); } }
-                    @keyframes pulse { 0%%, 100%% { box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); } 50%% { box-shadow: 0 10px 40px rgba(59, 130, 246, 0.6); } }
+                    @keyframes float { 0%, 100% { transform: translateY(0px); } 50% { transform: translateY(-8px); } }
+                    @keyframes pulse { 0%, 100% { box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); } 50% { box-shadow: 0 10px 40px rgba(59, 130, 246, 0.6); } }
                     @media (max-width: 480px) {
                       .sr-card { padding: 24px; }
                       .sr-title { font-size: 20px; }

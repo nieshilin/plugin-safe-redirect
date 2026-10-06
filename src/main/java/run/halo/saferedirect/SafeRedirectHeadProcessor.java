@@ -62,7 +62,8 @@ public class SafeRedirectHeadProcessor implements TemplateHeadProcessor {
 
     /**
      * 将白名单字符串转换为 JS 数组字面量
-     * <p>例如："github.com\ngoogle.com" → '["github.com","google.com"]'
+     * <p>例如："github.com\n*.example.com" → '["github.com","*.example.com"]'
+     * <p>支持 *.example.com 泛域名写法，匹配 example.com 及其所有子域名
      */
     private String buildWhitelistJs(String whitelistDomains) {
         if (whitelistDomains == null || whitelistDomains.isBlank()) {
@@ -72,11 +73,16 @@ public class SafeRedirectHeadProcessor implements TemplateHeadProcessor {
         String[] domains = whitelistDomains.split("[\n,]");
         boolean first = true;
         for (String domain : domains) {
-            String trimmed = domain.trim();
+            String trimmed = domain.trim().toLowerCase();
             if (!trimmed.isBlank()) {
                 if (!first) sb.append(",");
-                // 对域名做基础净化，只保留合法字符，防止注入
-                String safe = trimmed.replaceAll("[^a-zA-Z0-9.\\-]", "");
+                // 对域名做基础净化，只保留合法字符，防止注入；泛域名保留 "*." 前缀
+                String safe;
+                if (trimmed.startsWith("*.")) {
+                    safe = "*." + trimmed.substring(2).replaceAll("[^a-zA-Z0-9.\\-]", "");
+                } else {
+                    safe = trimmed.replaceAll("[^a-zA-Z0-9.\\-]", "");
+                }
                 sb.append("\"").append(safe).append("\"");
                 first = false;
             }
@@ -99,8 +105,10 @@ public class SafeRedirectHeadProcessor implements TemplateHeadProcessor {
               var currentHost = window.location.hostname;
 
               function isDomainWhitelisted(hostname) {
-                return WHITELIST.some(function(domain) {
-                  return hostname === domain || hostname.endsWith('.' + domain);
+                return WHITELIST.some(function(entry) {
+                  // 支持泛域名写法 *.example.com：剥去 "*." 前缀后匹配主域及其所有子域名
+                  var base = entry.indexOf('*.') === 0 ? entry.substring(2) : entry;
+                  return hostname === base || hostname.endsWith('.' + base);
                 });
               }
 

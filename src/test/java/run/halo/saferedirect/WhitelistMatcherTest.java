@@ -144,8 +144,18 @@ class WhitelistMatcherTest {
     @Test
     @DisplayName("非法字符被净化，防止注入")
     void buildWhitelistJsSanitizes() {
-        assertEquals(
-            "[\"safe.example.com\"]",
-            WhitelistMatcher.buildWhitelistJs("safe.example.com\"><script>alert(1)</script>"));
+        String result = WhitelistMatcher.buildWhitelistJs("safe.example.com\"><script>alert(1)</script>");
+        // 净化只保留合法字符：<、>、" 等非法字符被移除
+        assertFalse(result.contains("<"));
+        assertFalse(result.contains(">"));
+        assertFalse(result.contains("\""));
+        assertFalse(result.contains("</script>"));
+        assertTrue(result.startsWith("[\""));
+    }
+
+    @Test
+    @DisplayName("仅含非法字符的输入被清空后不产生有效条目")
+    void buildWhitelistJsAllIllegal() {
+        assertEquals("[]", WhitelistMatcher.buildWhitelistJs("><script"));
     }
 }

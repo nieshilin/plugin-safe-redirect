@@ -1,4 +1,4 @@
-package run.halo.saferedirect;
+﻿package run.halo.saferedirect;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -16,8 +16,6 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.List;
 
 /**
  * 安全跳转路由处理器
@@ -90,7 +88,7 @@ public class SafeRedirectRouter {
                 }
 
                 // 检查白名单
-                boolean whitelisted = isWhitelisted(finalUrl, basicSetting.getWhitelistDomains());
+                boolean whitelisted = WhitelistMatcher.isWhitelisted(finalUrl, basicSetting.getWhitelistDomains());
                 if (whitelisted) {
                     log.debug("Whitelisted domain, direct redirect to: {}", finalUrl);
                     try {
@@ -133,51 +131,6 @@ public class SafeRedirectRouter {
             });
     }
 
-    /**
-     * 检查目标URL是否在白名单中
-     */
-    private boolean isWhitelisted(String targetUrl, String whitelistDomains) {
-        if (targetUrl == null || targetUrl.trim().isEmpty()) {
-            return false;
-        }
-        if (whitelistDomains == null || whitelistDomains.trim().isEmpty()) {
-            return false;
-        }
-        List<String> domains = Arrays.stream(whitelistDomains.split("[\n,]"))
-            .map(String::trim)
-            .filter(d -> !d.isEmpty())
-            .toList();
-
-        if (domains.isEmpty()) {
-            return false;
-        }
-
-        try {
-            URI uri = URI.create(targetUrl);
-            String host = uri.getHost();
-            if (host == null) {
-                log.debug("Whitelist check: URL has no host - {}", targetUrl);
-                return false;
-            }
-            String lowerHost = host.toLowerCase();
-            boolean matched = domains.stream().anyMatch(domain -> {
-                String lowerDomain = domain.toLowerCase();
-                // 支持泛域名写法 *.example.com：剥去 "*." 前缀后，匹配主域及其所有子域名
-                String baseDomain = lowerDomain.startsWith("*.")
-                    ? lowerDomain.substring(2)
-                    : lowerDomain;
-                boolean result = lowerHost.equals(baseDomain)
-                    || lowerHost.endsWith("." + baseDomain);
-                log.debug("Whitelist check: host={}, domain={}, matched={}", lowerHost, lowerDomain, result);
-                return result;
-            });
-            log.info("Whitelist check final result: host={}, matched={}, whitelist={}", lowerHost, matched, domains);
-            return matched;
-        } catch (Exception e) {
-            log.warn("Failed to parse URL for whitelist check: {}", targetUrl, e);
-            return false;
-        }
-    }
 
     /**
      * 构建安全跳转页面 HTML
@@ -533,6 +486,8 @@ public class SafeRedirectRouter {
     private String escapeCssUrl(String input) {
         return input.replace("\\", "\\\\")
             .replace("'", "\\'")
+            .replace(")", "\\)")
+            .replace(";", "\\;")
             .replace("</", "<\\/");
     }
 
@@ -750,3 +705,6 @@ public class SafeRedirectRouter {
         }
     }
 }
+
+
+
